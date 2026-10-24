@@ -16,8 +16,9 @@ use crate::error::AppError;
 ///
 ///  1. **Sessão com papel de admin** — um usuário autenticado cujo `role` (que
 ///     viaja assinado nas claims do JWT) é `admin`. É o caminho preferido: a
-///     autorização deriva da identidade, é revogável por sessão e auditável
-///     por usuário. Nota: o cookie de sessão é `SameSite=Strict`, o que também
+///     autorização deriva da identidade e é atribuível ao usuário. Revogar o
+///     refresh impede a renovação, mas o JWT emitido mantém o papel até expirar.
+///     Nota: o cookie de sessão é `SameSite=Strict`, o que também
 ///     blinda estes endpoints contra CSRF vindo de outros sites.
 ///  2. **Secret key no header `Authorization`** — credencial de serviço para
 ///     integrações máquina-a-máquina (a chave vem da `Config`, lida do ambiente

@@ -431,7 +431,7 @@ date -u && docker compose exec db psql -U postgres -c "SELECT NOW();"
 | Causa | Ação |
 | --- | --- |
 | Lockout | **Aguardar** (até 15 min). Reiniciar o serviço zera os contadores, que vivem em memória |
-| `JWT_SECRET` trocado | Comportamento esperado — usuários precisam entrar de novo |
+| `JWT_SECRET` trocado | JWT antigo não valida; refresh válido renova nas rotas permitidas. Sem refresh válido, é preciso entrar de novo |
 | Relógio | Sincronizar NTP |
 
 Revogar todas as sessões, se necessário:

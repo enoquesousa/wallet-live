@@ -122,10 +122,10 @@ inline. Não existe `style="width:63%"` no sistema.
 | --- | --- | --- |
 | Hash de senha | argon2 via `password-auth` | Sem política de complexidade além do comprimento |
 | Limites de cadastro | Username 3–32, senha 8–128 | O teto evita DoS no cálculo da hash |
-| Token de acesso | JWT HS256, 10 min | **Não revogável** até expirar |
+| Token de acesso | JWT HS256, TTL nominal de 10 min e tolerância explícita de 30 s | **Não revogável** até `exp + 30 s` |
 | Refresh token | 32 bytes opacos, hash SHA-256 no banco | — |
 | Rotação | A cada uso, atômica | Duas abas simultâneas: uma perde |
-| Revogação | `revoked_at` no logout | Só o refresh; o access vive até expirar |
+| Revogação | `revoked_at` no logout, sem rotação nessa rota | Só o refresh; access vive até `exp + 30 s`. Se o banco falhar, só a remoção local dos cookies é garantida |
 | Lockout | 5 tentativas, backoff até 15 min | **Em memória** — reinício zera; por instância |
 
 **Ausências relevantes:** MFA, recuperação de senha, troca de senha, verificação de
@@ -221,7 +221,7 @@ Consequências das decisões, não defeitos pontuais:
 
 | # | Risco residual | Por quê | Mitigável? |
 | --- | --- | --- | --- |
-| RR-1 | Access token não revogável por até 10 min | JWT é stateless por desenho | Reduzir o TTL |
+| RR-1 | Access token não revogável por até 10 min e 30 s com o TTL padrão | JWT é stateless por desenho; tolerância de relógio explícita de 30 s | Reduzir o TTL |
 | RR-2 | Revogação de privilégio não é imediata | `role` viaja nas claims | Consultar o banco por requisição, ao custo de latência |
 | RR-3 | Lockout por instância, perdido no restart | Estado em memória | Armazenamento compartilhado |
 | RR-4 | `JWT_SECRET` sem rotação | Sem suporte a duas chaves | Implementar |

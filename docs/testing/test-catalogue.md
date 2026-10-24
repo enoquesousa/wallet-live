@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Inventário **caso a caso** dos 118 testes: o que cada um trava e por que existe.
+Inventário **caso a caso** dos testes: o que cada um trava e por que existe.
 Um teste cujo motivo não está escrito em algum lugar é um teste que alguém apaga
 no primeiro refactor em que ele incomoda.
 
@@ -36,7 +36,7 @@ entregue tem testes, e eles nem sempre moram onde a fase foi implementada — o 
 | Fase | Onde estão os testes |
 |---|---|
 | 1 — Fundações e integridade de dados | `repository` (26, contra Postgres real), `quotes` (2), `payload_quotes` (5), `services::portfolio` (7) |
-| 2 — Segurança de sessão | `auth::csrf` (3), `auth::throttle` (4), `auth::user` (1), `repository` (rotação/revogação/expiração), `http_web` (CSRF, gate de sessão, cabeçalhos) |
+| 2 — Segurança de sessão | `auth::csrf` (3), `auth::throttle` (4), `auth::user` (1), `repository` (rotação/revogação/expiração), `http_web` (CSRF, gate de sessão, cabeçalhos), `http_session` (5: renovação, logout, troca de conta e expiração) |
 | 3 — Arquitetura e API | `routes::api` (4), `http_api` (8, inclusive autorização e alias `/api`), `services::portfolio` (paginação) |
 | 4 — Operação | `http_web` (sondas separadas, cache de asset estático), `routes::frontend` (CSP sem inline) |
 | 5 — Produto e UX | `routes::frontend` (18: render, i18n, htmx, CSV, máscara), `routes::flash` (3), `i18n` (4), `market` (11), `payload_market` (7), `http_web` (fluxo de dinheiro ponta a ponta) |
@@ -217,6 +217,21 @@ chamam os handlers direto, passando o `Admin` como valor construído à mão —
 | `the_unversioned_alias_serves_the_same_thing_as_v1` | `/api` e `/api/v1` devolvem byte a byte o mesmo | Versionamento só vale se o alias não divergir com o tempo |
 | `the_openapi_spec_is_served_and_describes_the_real_routes` | A spec é servida e é JSON válido, com `openapi` e `paths` | Spec malformada é pior que nenhuma: um gerador de cliente a consome sem perguntar |
 | `every_api_response_carries_the_security_headers` | CSP sem `unsafe-inline`, `nosniff`, `DENY`, `no-referrer`, `no-store` — no sucesso **e** no erro | É a camada mais externa do router; só passando pela pilha se prova que não foi contornada |
+
+### `tests/http_session.rs` — 5 testes
+
+Exercitam o router de produção, seus cookies e o Postgres real. Os JWTs expirados
+são assinados com a chave de teste e timestamps no passado, sem esperas. As
+asserções leem **todos** os `Set-Cookie`; ler só o primeiro esconderia credenciais
+que o middleware anexasse depois do handler.
+
+| Teste | O que trava | Por que existe |
+|---|---|---|
+| `protected_requests_rotate_missing_or_expired_access_tokens` | Access ausente ou expirado há 60 s + refresh válido → um único par de cookies, identidade correta, token antigo revogado e replay recusado | Preserva renovação das telas privadas e impede a antiga tolerância implícita de 15 min no JWT |
+| `logout_never_renews_a_missing_or_expired_access_token` | GET logout só remove credenciais; nenhuma nova linha de sessão, nenhum refresh ativo e replay recusado | Renovar antes do logout deixava uma sessão nova ativa e anexava cookies depois da remoção |
+| `login_and_registration_do_not_restore_the_previous_account` | Login/cadastro de outra conta emite um único par, abre a identidade correta e não rotaciona a conta anterior | Cookies tardios do middleware podiam sobrescrever os do novo login/cadastro |
+| `authentication_pages_and_rejected_forms_do_not_rotate_refresh_tokens` | GET dos formulários, senha incorreta, cadastro duplicado e CSRF inválido não consomem o refresh nem emitem credenciais | Os caminhos de erro também atravessam o middleware e não devem criar sessões escondidas |
+| `logout_revokes_refresh_but_access_lasts_until_its_expiry` | Refresh revogado não renova; uma cópia do access válido ainda entra; access expirado há 60 s é recusado | Documenta e trava o limite real da arquitetura stateless, incluindo a tolerância explícita de 30 s |
 
 ### `tests/http_web.rs` — 15 testes
 

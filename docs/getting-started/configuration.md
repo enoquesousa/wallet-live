@@ -105,7 +105,7 @@ Chave HMAC que assina e valida os tokens de sessão (HS256).
 | --- | --- |
 | Formato | Qualquer string não vazia. **Sem requisito de comprimento** |
 | Risco de vazamento | **Crítico** — permite forjar qualquer sessão, inclusive de admin |
-| Efeito de trocar | **Invalida todas as sessões ativas** (access tokens deixam de validar) |
+| Efeito de trocar | Invalida JWTs da chave antiga; refresh válido continua podendo renovar com a chave nova. Encerrar todas as sessões exige também revogar os refresh tokens em `sessions` |
 | Rotação | **Não implementada** — não há suporte a duas chaves simultâneas |
 | Lida em | `src/config.rs`; usada em `src/auth/user.rs` |
 

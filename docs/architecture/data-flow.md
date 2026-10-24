@@ -134,8 +134,8 @@ funcional, não estética:
   duração cobre a requisição inteira, cabeçalhos de segurança inclusos.
 - `security_headers` vem antes do roteamento porque se aplica a **toda** resposta,
   inclusive erros e 404 — não é algo que cada handler precise lembrar de fazer.
-- `refresh_session` roda antes de qualquer handler para que a sessão já esteja
-  renovada **antes** do extrator `User` tentar ler o cookie.
+- `refresh_session` roda antes do extrator `User` para que ele receba a sessão
+  renovada. Ignora `/login`, `/register` e `/logout`, que controlam seus cookies.
 
 As setas tracejadas marcam acessos que **contornam** a camada de serviço: o
 `frontend` fala direto com o `Repository` nos casos que não envolvem a carteira
@@ -273,12 +273,16 @@ Divisão de responsabilidade entre os dois tokens:
 | --- | --- | --- |
 | Formato | JWT HS256 com claims (`id`, `username`, `role`) | 32 bytes aleatórios, **opaco** |
 | Validade | `SESSION_TTL_MINUTES` (10 min) | `REFRESH_TTL_DAYS` (14 dias) |
-| Validação | Só assinatura — **não toca o banco** | Consulta `sessions` por hash |
+| Validação | Assinatura e claims temporais, com tolerância de 30 s — **não toca o banco** | Consulta `sessions` por hash |
 | No banco | Nada | Só a **hash SHA-256** |
 | Revogável | Não, até expirar | **Sim**, de verdade |
 
 O valor em claro do refresh token nunca toca o banco: um vazamento do banco não
 vaza token utilizável.
+
+Logout não executa rotação antes de revogar o refresh recebido. A remoção dos
+cookies continua mesmo se a revogação no banco falhar. Um JWT já emitido não
+consulta `sessions` e pode ser aceito até `exp + 30 s`, inclusive após o logout.
 
 Evidência: `src/auth/session.rs` · `refresh_session`, `RefreshToken`;
 `src/repository.rs` · `rotate_session`, `revoke_session`;

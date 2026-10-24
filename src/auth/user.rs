@@ -51,8 +51,9 @@ impl User {
     }
 
     /// O papel vem das claims do JWT — assinadas, então tão confiáveis quanto o
-    /// resto do token. Rebaixar um admin só surte efeito quando os tokens
-    /// vigentes expirarem (ou a sessão for revogada).
+    /// resto do token. Rebaixar um admin só surte efeito em um novo token;
+    /// os já emitidos continuam válidos até expirar, com a tolerância de
+    /// relógio da validação. Revogar o refresh não revoga esses JWTs.
     pub fn is_admin(&self) -> bool {
         self.role == crate::models::ROLE_ADMIN
     }
@@ -75,11 +76,17 @@ impl User {
     }
 
     /// Reconstrói um `User` a partir de um token. Usa a mesma chave para VALIDAR
-    /// a assinatura: se o token foi fabricado/adulterado ou expirou, falha. Só
-    /// depois dessa verificação confiamos no conteúdo das claims.
+    /// a assinatura: se o token foi fabricado/adulterado ou expirou além da
+    /// tolerância de 30 s, falha. Só depois confiamos no conteúdo das claims.
     pub(crate) fn from_auth_token(token: &str, secret: &str) -> Result<Self, AppError> {
         let key = HS256Key::from_bytes(secret.as_bytes());
-        let claims = key.verify_token::<UserClaims>(token, None)?;
+        // O padrão da biblioteca admite 15 minutos extras, mais que o TTL
+        // nominal de acesso. Limitamos a folga para pequenos desvios de relógio.
+        let options = VerificationOptions {
+            time_tolerance: Some(Duration::from_secs(30)),
+            ..Default::default()
+        };
+        let claims = key.verify_token::<UserClaims>(token, Some(options))?;
         Ok(Self::new(
             claims.custom.id,
             claims.custom.username,

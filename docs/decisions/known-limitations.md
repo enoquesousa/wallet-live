@@ -243,9 +243,9 @@ Limitações estruturais, com os IDs de
 
 | ID | Limitação |
 | --- | --- |
-| RR-1 | Access token não revogável por até 10 min |
+| RR-1 | Access token não revogável por até 10 min e 30 s com o TTL padrão |
 | RR-2 | Revogação de privilégio não é imediata (o `role` viaja nas claims) |
-| RR-4 | `JWT_SECRET` sem rotação — trocar invalida todas as sessões |
+| RR-4 | `JWT_SECRET` sem rotação — trocar invalida JWTs antigos, mas refresh válido pode renovar |
 | RR-5 | `ADMIN_SECRET_KEY` compartilhada, sem escopo nem auditoria |
 | RR-8 | Sem trilha de auditoria de alteração de preço |
 | RR-12 | Sem limite global de requisições |

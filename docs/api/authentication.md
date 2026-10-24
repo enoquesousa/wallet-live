@@ -42,7 +42,8 @@ username=alice&password=<senha>&csrf_token=<token do formulário>
 O `csrf_token` precisa ser lido do formulário renderizado por `GET /login` — o
 mesmo valor está no cookie `csrf`, e os dois têm de bater.
 
-Resposta de sucesso: `303` para `/assets`, com dois `Set-Cookie`.
+Resposta de sucesso: `303` para `/`, que encaminha o usuário autenticado a
+`/assets`, com dois `Set-Cookie`.
 
 | Cookie | Conteúdo | `Max-Age` |
 | --- | --- | --- |
@@ -50,6 +51,10 @@ Resposta de sucesso: `303` para `/assets`, com dois `Set-Cookie`.
 | `refresh_token` | 32 bytes aleatórios, opacos | `REFRESH_TTL_DAYS` (14 dias) |
 
 Ambos: `HttpOnly`, `SameSite=Strict`, `Path=/`, e `Secure` se `COOKIE_SECURE=true`.
+
+O JWT tem TTL nominal de 10 minutos por padrão. `User::from_auth_token` admite
+**30 segundos de tolerância de relógio**, explicitamente; uma cópia do JWT pode
+ser aceita até `exp + 30 s`. O `Max-Age` do cookie continua no TTL nominal.
 
 ### 2.2 A ordem das verificações no login
 
@@ -83,14 +88,16 @@ Contagem **por usuário**, com o nome normalizado (`trim().to_lowercase()`): `AL
 
 ### 2.4 Renovação transparente
 
-Não há endpoint de refresh. A renovação acontece **em qualquer requisição**, por
-middleware:
+Não há endpoint de refresh. O middleware pode renovar nas demais rotas, mas
+**não renova em `/login`, `/register` ou `/logout`**, em nenhum método. Essas
+rotas controlam os próprios cookies: a renovação da conta anterior não pode
+sobrescrever o login/cadastro nem recriar uma sessão durante o logout.
 
 | Estado | Comportamento |
 | --- | --- |
 | `token` válido | Nada acontece — a validação não toca o banco |
-| `token` expirado + `refresh_token` válido | Rotação automática; dois `Set-Cookie` novos na resposta; a requisição prossegue normalmente |
-| `token` expirado + refresh inválido/revogado/expirado | Segue sem sessão ⇒ redireciona ao login |
+| `token` ausente, inválido ou expirado além da tolerância + `refresh_token` válido | Rotação automática; dois `Set-Cookie` novos na resposta; a requisição prossegue normalmente |
+| `token` sem validade + refresh inválido/revogado/expirado | Segue sem sessão ⇒ a rota privada redireciona ao login |
 
 **Rotação a cada uso:** cada renovação queima o token anterior e emite um novo. Um
 refresh token roubado para de funcionar assim que o usuário legítimo renovar.
@@ -105,9 +112,18 @@ ponto de vista de segurança, e pode surpreender.
 GET /logout
 ```
 
-Revoga a linha em `sessions` (`revoked_at`) **e** remove os cookies. Não é apenas
-limpar o navegador: a sessão morre no servidor, e o refresh token deixa de valer
-imediatamente.
+Remove os cookies apresentados e tenta revogar a linha do refresh recebido em
+`sessions` (`revoked_at`), sem renová-lo antes. Quando a escrita no banco tem
+sucesso, esse refresh e suas cópias deixam de renovar imediatamente. Se o banco
+falhar, o logout local continua, mas a revogação no servidor não é garantida.
+
+O JWT de acesso é **stateless**: uma cópia já emitida continua aceita até
+`exp + 30 s` (até 10 min e 30 s desde a emissão, com o TTL padrão), inclusive
+depois do logout ou de um rebaixamento de papel. Revogar o refresh impede novas
+renovações; não consulta nem invalida cada JWT em circulação.
+
+O contrato `GET /logout` é mantido. A rota não exige token CSRF; migrar essa
+operação para POST com CSRF exige ajustar também os links da interface.
 
 ### 2.6 Respostas sem sessão válida
 
@@ -155,7 +171,7 @@ Duas credenciais aceitas para `POST`/`PATCH /api/*/assets`, **nesta ordem**:
 
 ### Caminho 1 — sessão com papel `admin`
 
-Preferido. A autorização deriva da identidade: é revogável por sessão e atribuível a
+Preferido. A autorização deriva da identidade e é atribuível a
 um usuário. O `role` vem das claims do JWT, já assinadas — **sem consulta extra ao
 banco**.
 
@@ -236,7 +252,7 @@ documentação:
 | Bloqueio/desativação de conta | Não implementado |
 | Listagem das sessões ativas | Não implementado (a tabela existe; não há rota) |
 | Revogação de outras sessões | Não implementado |
-| Rotação de `JWT_SECRET` | Não implementado — trocar invalida todas as sessões |
+| Rotação de `JWT_SECRET` | Não implementado — trocar invalida JWTs antigos, mas refresh válido pode renovar; revogação global exige também revogar `sessions` |
 | Rotação de `ADMIN_SECRET_KEY` | Não implementado — trocar exige reiniciar |
 | Auditoria de acesso administrativo | Não implementado |
 | Limpeza de sessões expiradas | Não implementado — a tabela cresce indefinidamente |
@@ -255,6 +271,11 @@ documentação:
 - migrations/20260716000001_create_sessions.up.sql
 - migrations/20260717000000_user_roles.up.sql
 - testes: forms_without_a_matching_csrf_token_are_refused,
+          protected_requests_rotate_missing_or_expired_access_tokens,
+          logout_never_renews_a_missing_or_expired_access_token,
+          login_and_registration_do_not_restore_the_previous_account,
+          authentication_pages_and_rejected_forms_do_not_rotate_refresh_tokens,
+          logout_revokes_refresh_but_access_lasts_until_its_expiry,
           private_screens_send_anonymous_visitors_to_the_login,
           an_expired_session_redirects_the_whole_browser_not_just_the_fragment,
           writing_to_the_catalogue_requires_the_admin_credential,

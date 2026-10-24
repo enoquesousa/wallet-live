@@ -32,7 +32,7 @@ vulnerabilidade (ver [SECURITY.md](../../SECURITY.md)).
 | A6 | Saldo e posições | `users.balance`, `holdings` | Alto — dado financeiro do usuário |
 | A7 | Extrato | `transactions` | Alto — histórico financeiro completo |
 | A8 | Refresh tokens | Cookie (claro), banco (hash) | Alto — sessão persistente |
-| A9 | Access tokens | Cookie | Médio — janela de 10 min |
+| A9 | Access tokens | Cookie | Médio — TTL nominal de 10 min mais 30 s de tolerância |
 | A10 | Tokens CSRF | Cookie | Médio — habilita forja de requisição |
 | A11 | Disponibilidade do serviço | Processo | Médio |
 | A12 | Integridade do catálogo | `assets` | Alto |
@@ -80,9 +80,9 @@ Prob. = probabilidade.
 | A8 | Roubo de refresh token | XSS, acesso ao dispositivo | Alto | Baixa | `HttpOnly`, `SameSite=Strict`, CSP fechada, **rotação a cada uso** | **Baixo** | Vincular a impressão de dispositivo |
 | A8 | Replay de token queimado | Reuso após rotação | Médio | Baixa | `UPDATE ... RETURNING` atômico — **sem janela de corrida** | **Baixo** | — |
 | A8 | Vazamento pelo dump do banco | Leitura de `sessions` | Médio | Baixa | **Só a hash SHA-256 é gravada** | **Baixo** | — |
-| A9 | Access token não revogável | Roubo antes de expirar | Médio | Baixa | TTL de 10 min | **Médio** | Reduzir TTL; lista de revogação |
+| A9 | Access token não revogável | Roubo antes de expirar | Médio | Baixa | TTL nominal de 10 min e tolerância de 30 s | **Médio** | Reduzir TTL; lista de revogação |
 | A9 | Interceptação em HTTP claro | Rede hostil, `COOKIE_SECURE` mal configurado | **Alto** | **Média** | `Secure` condicional — **comparação literal com `"true"`** | **Alto** | Corrigir o parsing (DT-04); forçar HTTPS |
-| A6 | Privilégio revogado ainda ativo | `role` nas claims | Médio | Baixa | Expiração ≤ 10 min; revogação de sessão | **Baixo** | Consultar papel no banco |
+| A6 | Privilégio revogado ainda ativo | `role` nas claims | Médio | Baixa | Expiração do JWT mais 30 s de tolerância; revogar refresh só impede renovar | **Baixo** | Consultar papel no banco |
 
 > **A linha de `COOKIE_SECURE` é o risco mais concreto do modelo.** A falha é
 > silenciosa: um ambiente configurado com `COOKIE_SECURE=TRUE` (maiúsculas) roda
@@ -208,7 +208,7 @@ Decisões conscientes, com a justificativa registrada:
 | --- | --- | --- | --- |
 | RA-1 | Catálogo e preços públicos | Não é dado de usuário | A API se tornar comercial |
 | RA-2 | Sem criptografia em repouso | Simulação educacional, sem dinheiro real | Houver dado real de usuário |
-| RA-3 | Access token não revogável por 10 min | Custo de consultar o banco a cada requisição | Requisito de revogação imediata |
+| RA-3 | Access token não revogável até `exp + 30 s` | Custo de consultar o banco a cada requisição | Requisito de revogação imediata |
 | RA-4 | Lockout em memória | Instância única | Houver réplicas |
 | RA-5 | RUSTSEC-2023-0071 ignorado | Só HS256 é usado; código RSA nunca exercitado | Houver fix, ou uso de RSA |
 | RA-6 | Sem rate limiting global | Escopo educacional; mitigável no proxy | Exposição pública real |
