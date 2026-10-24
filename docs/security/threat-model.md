@@ -128,6 +128,7 @@ Prob. = probabilidade.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Todos | Crate com vulnerabilidade | Dependência | Alto | Média | `cargo audit` em push e PR; `Cargo.lock` versionado | **Baixo** | Execução agendada |
 | Todos | RUSTSEC-2023-0071 (`rsa`) | `jwt-simple` → `superboring` | Baixo **neste uso** | — | `ignore` documentado: só HS256 é usado, código RSA nunca exercitado | **Baixo** | Reavaliar quando houver fix |
+| Todos | RUSTSEC-2026-0235 (`rkyv` 0.7.46) | Dependência opcional de `rust_decimal` no lockfile | Não alcançável na árvore ativa verificada | — | Exceção específica na CI; `cargo tree --all-features` não lista dependentes | Condicionado às features atuais | Reavaliar se a dependência for ativada ou removida do lockfile |
 | Todos | **htmx vendorado vulnerável** | `static/htmx.js` | Médio | Baixa | **Nenhum** — `cargo audit` não alcança JavaScript | **Médio** | Verificação de versão do htmx |
 | Todos | Comprometimento de crate | Publicação maliciosa | Alto | Muito baixa | `Cargo.lock`; **zero dependências npm** | **Baixo** | — |
 | Todos | CLI do Tailwind adulterado | Download do GitHub Releases no CI | Médio | Muito baixa | **Sem verificação de checksum** | **Baixo** | Fixar hash do binário |
@@ -214,6 +215,11 @@ Decisões conscientes, com a justificativa registrada:
 | RA-6 | Sem rate limiting global | Escopo educacional; mitigável no proxy | Exposição pública real |
 | RA-7 | `BIGSERIAL` em vez de UUID | Ids só em superfície autenticada, leitura filtrada | API pública ou multi-tenant |
 | RA-8 | Sem MFA | Escopo educacional | Operação real |
+| RA-9 | RUSTSEC-2026-0235 ignorado na CI | `rkyv` 0.7.46 é opcional e está ausente da árvore ativa, inclusive com `--all-features` | Uma feature ativar `rkyv`, ou uma atualização permitir retirá-lo do lockfile |
+
+A exceção de `rkyv` é adicional à exceção RSA de `.cargo/audit.toml`; a atualização
+para `jwt-simple` 0.13.2 mantém `rsa` 0.9.10. Ver a política e os comandos de
+verificação em [gestão de dependências](../development/dependency-management.md).
 
 ## 6. Ações prioritárias
 
@@ -244,6 +250,8 @@ classificados como Alto.**
 - src/repository.rs      (queries parametrizadas; filtro por user_id)
 - src/quotes.rs          · brl_price (recusa taxa ≤ 0; sem plausibilidade)
 - .cargo/audit.toml      (RUSTSEC-2023-0071)
+- .github/workflows/ci.yml · audit (RUSTSEC-2026-0235 adicional)
+- Cargo.toml, Cargo.lock (versões e features das dependências)
 - migrations/20260716000000_financial_guardrails.up.sql
 - migrations/20260716000001_create_sessions.up.sql
 ```

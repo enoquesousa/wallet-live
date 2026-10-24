@@ -58,6 +58,15 @@ projeto adota [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ### Segurança
 
+- Atualizado `jwt-simple` para **0.13.2**, mantendo `pure-rust` e o uso de HS256.
+  O `Cargo.lock` passa a resolver `crypto-bigint` **0.7.7** e `ctutils` **0.4.5**
+  na atualização das dependências criptográficas.
+- Atualizados no lockfile `event-listener` para **5.4.2** e `tokio` para
+  **1.53.3**, corrigindo os avisos RUSTSEC-2026-0221 e RUSTSEC-2026-0386.
+- Documentadas em conjunto as duas exceções de auditoria já existentes:
+  **RUSTSEC-2023-0071** (`rsa`, configurado em `.cargo/audit.toml`; a aplicação usa
+  HS256) e **RUSTSEC-2026-0235** (`rkyv`, flag da CI; dependência opcional ausente
+  da árvore ativa). A atualização não remove `rsa` nem amplia a lista de exceções.
 - Tolerância de relógio na validação do JWT definida em 30 segundos, em vez de
   herdar os 15 minutos de `jwt-simple` 0.12.16. Com TTL nominal de 10 minutos,
   uma cópia do access pode ser aceita até 10 minutos e 30 segundos desde a emissão.

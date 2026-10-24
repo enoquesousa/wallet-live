@@ -776,7 +776,7 @@ superfície da imagem.
 | askama | 0.16.0 | SSR verificado em compilação | Confirmado | Recompilar a cada mudança de HTML |
 | htmx | 2.0.8 | Interatividade sem SPA | Confirmado (CSP + progressive enhancement) | Vendorado, sem auditoria automática |
 | Tailwind CLI | 4.3.3 | CSS em build-time | Confirmado (CSP + determinismo) | Artefato versionado pode descolar |
-| jwt-simple | 0.12.12 | JWT HS256 | Confirmado (`pure-rust` dispensa cmake) | `rsa` transitivo com advisory aberto |
+| jwt-simple | 0.13.2 | JWT HS256 | Confirmado (`pure-rust` dispensa cmake) | `rsa` transitivo com advisory aberto |
 | password-auth | 1.0.0 | Hash argon2 | Confirmado (negociação de algoritmo) | — |
 | OpenTelemetry | 0.32 | Traces e métricas | Confirmado (opt-in sem overhead) | Versões acopladas entre 4 crates |
 

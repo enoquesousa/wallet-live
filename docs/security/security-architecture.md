@@ -207,7 +207,12 @@ distintas revelariam quais contas existem.
 | Dependências JS no build | **Zero** — sem Node, sem npm |
 | CDN de terceiro | **Zero** — htmx e CSS saem do binário |
 | Imagem base | `debian:bookworm-slim`, usuário `uid 10001` |
-| Advisory aberto | RUSTSEC-2023-0071, ignorado com justificativa |
+| Exceção RSA | RUSTSEC-2023-0071 em `.cargo/audit.toml`; a aplicação usa somente HS256 |
+| Exceção de pacote opcional | RUSTSEC-2026-0235 no comando da CI; `rkyv` 0.7.46 está no lockfile, mas ausente da árvore ativa |
+
+A flag `--ignore` da CI se soma à configuração de `.cargo/audit.toml`; as duas
+exceções e seus critérios de reavaliação estão em
+[gestão de dependências](../development/dependency-management.md).
 
 **A ausência de cadeia npm é um controle**, não um detalhe: o build não herda a
 superfície de ataque do ecossistema JavaScript.

@@ -142,7 +142,10 @@ a revogação remota. JWTs de acesso já emitidos não são revogados por essa e
 - **`jwt-simple` traz `rsa` transitivamente** (via `superboring`), com
   **RUSTSEC-2023-0071** (Marvin Attack) **sem correção upstream**. Ignorado em
   `.cargo/audit.toml` com justificativa verificável: a aplicação usa exclusivamente
-  HS256, então o código RSA nunca é exercitado.
+  HS256, então o código RSA nunca é exercitado. A revisão de dependências de
+  2026-10-24 atualiza `jwt-simple` para 0.13.2, mas mantém `rsa` 0.9.10 na árvore
+  e preserva essa exceção. A política completa, incluindo a exceção de `rkyv`
+  opcional na CI, está em [gestão de dependências](../development/dependency-management.md).
 - **`jwt_simple::Error` não implementa `std::error::Error`** (é `anyhow::Error` por
   baixo), o que impede `#[from]`/`transparent` no `thiserror` e obriga a um `impl
   From` manual guardando só a mensagem — perde-se a cadeia de causa.

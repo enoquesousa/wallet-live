@@ -9,7 +9,7 @@ axum = { version = "0.8.9", features = ["macros"] }
 axum-extra = { version = "0.10.1", features = ["cookie"] }
 base64 = "0.22.1"
 color-eyre = "0.6.5"
-jwt-simple = { version = "0.12.12", default-features = false, features = ["pure-rust"] }
+jwt-simple = { version = "0.13.2", default-features = false, features = ["pure-rust"] }
 opentelemetry = "0.32.0"
 opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace", "metrics"] }
 opentelemetry_sdk = "0.32.1"
