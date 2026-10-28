@@ -43,6 +43,13 @@ projeto adota [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ### Corrigido
 
+- Renovação automática ignora `/login`, `/register` e `/logout`: o middleware
+  não consome o refresh antes do logout nem sobrescreve os cookies de outra conta
+  depois de login/cadastro. Cinco contratos HTTP com Postgres real cobrem esses
+  caminhos e o limite de revogação do JWT stateless.
+- Documentação de revogação distingue refresh e access: logout impede novas
+  renovações quando a escrita no banco tem sucesso; JWTs já emitidos mantêm sua
+  validade até a expiração com a tolerância de relógio.
 - Corrigida a análise de licenciamento para registrar a origem derivada do projeto, a
   cláusula 10.1 do edital Santander Bootcamp 2026 e a necessidade de resolver a
   autorização do código-base antes da adoção de uma licença *open source*.
@@ -51,6 +58,18 @@ projeto adota [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ### Segurança
 
+- Atualizado `jwt-simple` para **0.13.2**, mantendo `pure-rust` e o uso de HS256.
+  O `Cargo.lock` passa a resolver `crypto-bigint` **0.7.7** e `ctutils` **0.4.5**
+  na atualização das dependências criptográficas.
+- Atualizados no lockfile `event-listener` para **5.4.2** e `tokio` para
+  **1.53.3**, corrigindo os avisos RUSTSEC-2026-0221 e RUSTSEC-2026-0386.
+- Documentadas em conjunto as duas exceções de auditoria já existentes:
+  **RUSTSEC-2023-0071** (`rsa`, configurado em `.cargo/audit.toml`; a aplicação usa
+  HS256) e **RUSTSEC-2026-0235** (`rkyv`, flag da CI; dependência opcional ausente
+  da árvore ativa). A atualização não remove `rsa` nem amplia a lista de exceções.
+- Tolerância de relógio na validação do JWT definida em 30 segundos, em vez de
+  herdar os 15 minutos de `jwt-simple` 0.12.16. Com TTL nominal de 10 minutos,
+  uma cópia do access pode ser aceita até 10 minutos e 30 segundos desde a emissão.
 - Documentados três riscos de prioridade alta ainda **não corrigidos no código**:
   `COOKIE_SECURE` com comparação literal que falha em silêncio (**DT-04**), segredos
   validados só por presença e não por qualidade (**DT-07**) e `DATABASE_URL` completa

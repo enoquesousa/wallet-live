@@ -146,8 +146,9 @@ base-uri 'self'; object-src 'none'`.
 | **Tratamento de erro** | **Nenhuma delas interrompe a requisição.** Todas caem no fluxo normal, e o extrator `User` de cada rota produz o 401 ou o redirecionamento habitual. É deliberado: um erro de renovação não deve virar 500 quando o caminho correto é pedir login |
 | **Evidência** | `src/auth/session.rs` · `refresh_session`; `src/repository.rs` · `rotate_session` |
 
-Roda **antes** de qualquer handler porque o extrator `User` lê o cookie: sem essa
-ordem, o handler veria sessão expirada mesmo com refresh válido em mãos.
+Roda **antes** dos extratores para que a rota receba o `User` renovado. Ignora
+`/login`, `/register` e `/logout` em todos os métodos: esses handlers precisam
+controlar seus cookies sem uma renovação posterior da conta anterior.
 
 ### 2.6 `routes::frontend` — SSR
 
@@ -252,8 +253,9 @@ do `Decimal` mesmo com cada coluna dentro do invariante.
 Os campos de `User` são privados de propósito: a única forma de obter um `User` é
 passando por um fluxo de autenticação, então **ter um `User` em mãos é prova de
 que o fluxo foi cumprido**. O `role` vem das claims assinadas — consequência: um
-rebaixamento de admin só surte efeito quando o token vigente expira (≤ 10 min por
-padrão) ou a sessão é revogada.
+rebaixamento de admin passa a valer em um novo token. Os JWTs já emitidos mantêm
+o papel até `exp + 30 s` (até 10 min e 30 s por padrão); revogar o refresh não
+antecipa esse limite.
 
 ### 2.12 `auth::session` — refresh token
 
@@ -444,7 +446,8 @@ Consequências estruturais das decisões, não defeitos a corrigir pontualmente:
    que a tela de mercado fica em estado de carregamento por até
    `MARKET_SYNC_SECONDS` após cada deploy.
 3. **`role` nas claims do JWT.** Revogação de privilégio não é instantânea:
-   depende da expiração do access token ou da revogação da sessão.
+   depende da expiração do access token mais 30 s de tolerância; revogar o
+   refresh não invalida o JWT já emitido.
 4. **`Decimal` tem 28 dígitos significativos**, enquanto `NUMERIC` é ilimitado. O
    invariante `MONEY_SCALE` e os `ROUND` nas leituras são o que mantém as duas
    representações compatíveis — e precisam ser respeitados por **qualquer** query

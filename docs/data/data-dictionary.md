@@ -48,8 +48,9 @@ depósitos e vendas. **Sempre alterado dentro de transação com `FOR UPDATE`**,
 serializa operações concorrentes do mesmo usuário. Escala canônica de 8 casas.
 
 **`role`** — viaja nas **claims assinadas do JWT**, então a autorização não custa uma
-consulta. Consequência: rebaixar um admin só surte efeito quando o token vigente
-expira (≤ 10 min) ou a sessão é revogada.
+consulta. Consequência: um novo token usa o papel atualizado, mas JWTs já emitidos
+mantêm o papel até `exp + 30 s` (até 10 min e 30 s por padrão). Revogar o refresh
+não invalida esses JWTs.
 
 **Campos que deliberadamente não existem:** e-mail, telefone, nome completo, CPF,
 data de nascimento, endereço, data de criação da conta, último acesso. O sistema

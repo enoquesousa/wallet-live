@@ -18,7 +18,7 @@ e a análise de risco (ver [threat-model.md](threat-model.md)).
 
 | Segredo | Onde vive | Sensibilidade | Rotação | Efeito de trocar |
 | --- | --- | --- | --- | --- |
-| `JWT_SECRET` | Ambiente → `Config` (memória) | **Crítica** | **Não implementada** | Invalida **todas** as sessões |
+| `JWT_SECRET` | Ambiente → `Config` (memória) | **Crítica** | **Não implementada** | Invalida assinaturas da chave antiga; refresh válido pode emitir um JWT com a nova chave |
 | `ADMIN_SECRET_KEY` | Ambiente → `Config` (memória) | **Crítica** | **Não implementada** | Integrações param até atualizarem |
 | `DATABASE_URL` | Ambiente → `Config` (memória) | **Alta** (contém senha) | Fora da aplicação | Exige reinício |
 | Hashes de senha | `users.password_hash` | Alta | Por usuário, no cadastro | — |
@@ -77,7 +77,7 @@ Três propriedades desse desenho:
 | --- | --- | --- | --- |
 | L1 | **Nenhuma validação de qualidade** | `JWT_SECRET=a` é aceito | **Alta** |
 | L2 | **Valores de exemplo não são recusados** | `change-me` do `.env.example` pode ir para produção | **Alta** |
-| L3 | **Sem rotação de `JWT_SECRET`** | Trocar derruba todas as sessões; não há suporte a duas chaves | Média |
+| L3 | **Sem rotação de `JWT_SECRET`** | Troca exige reinício e invalida JWTs antigos; refresh continua válido. Não há suporte a duas chaves | Média |
 | L4 | **Sem rotação de `ADMIN_SECRET_KEY`** | Trocar exige reinício e coordenação com integrações | Média |
 | L5 | `DATABASE_URL` completa vai para o log em erro de conexão | Senha do banco no log | Média |
 | L6 | Segredos padrão no `docker-compose.yaml` | `dev-admin-secret-change-me` funciona se ninguém sobrescrever | Média |
@@ -108,11 +108,12 @@ head -c 48 /dev/urandom | base64
 
 ### `JWT_SECRET`
 
-**Efeito: todas as sessões ativas são invalidadas.** Os access tokens deixam de
-validar, e os refresh tokens — que são opacos e vivem no banco — continuam válidos,
-mas a renovação emite um JWT novo com a chave nova. Na prática, usuários com access
-token vigente são deslogados; os que têm refresh válido são renovados
-transparentemente.
+**Efeito: JWTs assinados com a chave antiga deixam de validar.** Os refresh
+tokens são opacos, vivem no banco como hashes e não dependem de `JWT_SECRET`.
+Quem apresenta refresh válido pode renovar transparentemente nas rotas que
+permitem renovação e receber um JWT assinado com a chave nova, mesmo que o access
+anterior ainda estivesse no TTL nominal. Quem não tem refresh válido precisa
+entrar de novo. `/login`, `/register` e `/logout` não fazem essa renovação.
 
 1. Gerar o novo valor.
 2. Atualizar a variável no ambiente.
@@ -120,6 +121,12 @@ transparentemente.
 4. Confirmar que o boot subiu e `/readyz` responde `200`.
 
 Fazer em janela de baixo uso, quando possível.
+
+**Trocar a chave não encerra todas as sessões.** Para invalidar também a
+possibilidade de renovação, é necessário revogar as linhas ativas de `sessions`.
+Para encerrar todas as credenciais em circulação, coordene as duas operações sem
+aceitar requisições entre elas, como no procedimento de comprometimento abaixo.
+Revogar só os refresh tokens mantém JWTs já emitidos válidos até `exp + 30 s`.
 
 ### `ADMIN_SECRET_KEY`
 
@@ -153,17 +160,21 @@ curl -s -o /dev/null -w '%{http_code}\n' -X PATCH http://127.0.0.1:3000/api/v1/a
 
 Quem tem o segredo **pode forjar qualquer sessão, inclusive de admin**.
 
-1. **Trocar imediatamente** e reiniciar. Isso invalida os tokens forjados.
-2. Revogar todas as sessões:
+1. **Interromper a admissão de requisições**, gerar outra chave e atualizar
+   `JWT_SECRET` no ambiente. A chave nova invalida as assinaturas antigas,
+   inclusive tokens forjados.
+2. Com a aplicação ainda sem atender requisições, revogar todos os refresh tokens:
 
    ```sql
    UPDATE sessions SET revoked_at = NOW() WHERE revoked_at IS NULL;
    ```
 
-3. Auditar `assets.unit_value` em busca de alteração indevida — é o que uma sessão de
+3. Reiniciar com a chave nova, confirmar o boot e reabrir o tráfego. Isso evita
+   emitir JWTs novos entre a troca da chave e a revogação dos refresh tokens.
+4. Auditar `assets.unit_value` em busca de alteração indevida — é o que uma sessão de
    admin forjada permitiria alterar. **Não há trilha de auditoria**, então a
    verificação é por inspeção do valor atual contra a cotação de mercado.
-4. Auditar `transactions` por movimentações inesperadas.
+5. Auditar `transactions` por movimentações inesperadas.
 
 ### `ADMIN_SECRET_KEY` vazada — **crítico**
 

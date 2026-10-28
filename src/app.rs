@@ -175,7 +175,8 @@ impl App {
             .merge(crate::routes::frontend::router())
             .with_state(state.clone())
             // Renova sessões com access token expirado e refresh token válido
-            // (rotacionando o refresh) antes de qualquer handler rodar.
+            // (rotacionando o refresh) antes dos handlers, exceto nas rotas
+            // de login, cadastro e logout, que controlam seus próprios cookies.
             .layer(axum::middleware::from_fn_with_state(
                 state.clone(),
                 crate::auth::session::refresh_session,

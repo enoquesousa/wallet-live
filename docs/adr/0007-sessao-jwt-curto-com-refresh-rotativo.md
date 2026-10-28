@@ -50,12 +50,16 @@ vale até expirar); JWT com lista de revogação em memória (não sobrevive a r
 | Cookie | `token` | `refresh_token` |
 | Formato | JWT HS256 com claims (`id`, `username`, `role`) | 32 bytes aleatórios do SO, **opaco** |
 | Validade | `SESSION_TTL_MINUTES` (padrão 10 min) | `REFRESH_TTL_DAYS` (padrão 14 dias) |
-| Validação | Só a assinatura — **não toca o banco** | Consulta `sessions` pela hash |
+| Validação | Assinatura e claims temporais, com tolerância explícita de 30 s — **não toca o banco** | Consulta `sessions` pela hash |
 | No banco | Nada | **Só a hash SHA-256** |
 | Revogável | Não, até expirar | **Sim** |
 
 Ambos: `HttpOnly`, `SameSite=Strict`, `Secure` conforme `COOKIE_SECURE`, `Path=/`,
 `Max-Age` alinhado ao TTL correspondente.
+
+O prazo de aceitação do JWT pode chegar a `exp + 30 s`, ou 10 min e 30 s desde
+a emissão com o TTL padrão. A tolerância é definida em `User::from_auth_token`;
+não depende do padrão de 15 minutos de `jwt-simple` 0.12.16.
 
 Renovação transparente por middleware, com **rotação a cada uso**.
 
@@ -69,6 +73,11 @@ Renovação transparente por middleware, com **rotação a cada uso**.
 > antigo e emite um novo, então um token roubado para de funcionar no momento em
 > que o usuário legítimo renova). Só a hash é guardada: um vazamento do banco não
 > vaza tokens utilizáveis."
+
+Nesse comentário histórico, "token roubado" se refere ao **refresh antigo**.
+Uma cópia de um JWT já emitido continua aceita até expirar com a tolerância de
+relógio. A rotação tampouco identifica qual concorrente é o legítimo: ela aceita
+o primeiro uso do refresh e rejeita os seguintes, sem revogar uma família inteira.
 
 **A peça central é o `UPDATE ... RETURNING` atômico.** `rotate_session` executa,
 numa transação:
@@ -90,42 +99,53 @@ aleatoriedade do SO, não uma senha escolhida por humano. Não há ataque de
 dicionário a mitigar, e o custo de argon2 seria pago em **cada renovação de sessão**
 sem ganho de segurança.
 
-**Por que o middleware roda antes de tudo.** `refresh_session` é aplicado antes de
-qualquer handler porque o extrator `User` lê o cookie: sem essa ordem, o handler
+**Por que o middleware roda antes dos extratores.** `refresh_session` é aplicado
+antes do handler porque o extrator `User` lê o cookie: sem essa ordem, o handler
 veria sessão expirada mesmo com refresh válido em mãos. O `User` renovado vai nas
 `extensions` da requisição, de onde o extrator o recupera — o handler nem fica
 sabendo que houve renovação.
+
+**Exceção: `/login`, `/register` e `/logout`, em todos os métodos.** Essas rotas
+não renovam a sessão anterior. Seus handlers criam ou removem os cookies; deixar
+o middleware anexar cookies de renovação depois deles poderia restaurar a conta
+anterior ou deixar uma nova sessão ativa no logout.
 
 **Falha de renovação não interrompe a requisição.** Sessão inexistente, revogada,
 expirada, erro de banco ou falha ao assinar o novo JWT: todos caem no fluxo normal,
 e o extrator produz o 401 ou o redirecionamento habitual. É deliberado — um erro de
 renovação não deve virar 500 quando o caminho correto é pedir login.
 
-**Logout revoga no servidor**, marcando `revoked_at` — não é só apagar o cookie.
+**Logout tenta revogar o refresh no servidor**, marcando `revoked_at`, e remove
+os cookies. Uma falha no banco não impede a remoção local, mas também não garante
+a revogação remota. JWTs de acesso já emitidos não são revogados por essa escrita.
 
 ## Consequências positivas
 
-- Logout mata a sessão de verdade, no servidor.
-- Token roubado para de funcionar quando o legítimo renova (janela ≤ 10 min).
+- Logout bem-sucedido no banco impede novas renovações com o refresh recebido.
+- O refresh antigo deixa de funcionar depois da primeira rotação bem-sucedida.
 - Vazamento do banco não entrega tokens utilizáveis — só hashes.
 - Validação do caminho quente não toca o banco.
 - Sessão de 14 dias sem token de 14 dias.
 - Renovação invisível ao usuário e ao handler.
-- Quatro testes cobrem rotação, revogação, expiração e token fabricado.
+- Testes de repositório cobrem rotação, revogação, expiração e token fabricado;
+  contratos HTTP cobrem também cookies, troca de conta e a ordem dos middlewares.
 
 ## Consequências negativas
 
 - **Revogação de privilégio não é instantânea.** O `role` viaja nas claims
-  assinadas, então rebaixar um admin só surte efeito quando o token vigente expira
-  (≤ 10 min) ou a sessão é revogada. Está documentado no código, mas é uma
-  propriedade que surpreende.
+  assinadas: um novo token lê o papel atual, mas os JWTs vigentes mantêm o papel
+  até `exp + 30 s` (até 10 min e 30 s com o TTL padrão). Revogar o refresh não
+  antecipa esse limite.
 - **HS256 é simétrico:** o mesmo segredo assina e valida. Múltiplos serviços
   validando compartilhariam a capacidade de emitir. Adequado a um serviço único;
   RS256/EdDSA seria necessário num cenário distribuído.
 - **`jwt-simple` traz `rsa` transitivamente** (via `superboring`), com
   **RUSTSEC-2023-0071** (Marvin Attack) **sem correção upstream**. Ignorado em
   `.cargo/audit.toml` com justificativa verificável: a aplicação usa exclusivamente
-  HS256, então o código RSA nunca é exercitado.
+  HS256, então o código RSA nunca é exercitado. A revisão de dependências de
+  2026-10-24 atualiza `jwt-simple` para 0.13.2, mas mantém `rsa` 0.9.10 na árvore
+  e preserva essa exceção. A política completa, incluindo a exceção de `rkyv`
+  opcional na CI, está em [gestão de dependências](../development/dependency-management.md).
 - **`jwt_simple::Error` não implementa `std::error::Error`** (é `anyhow::Error` por
   baixo), o que impede `#[from]`/`transparent` no `thiserror` e obriga a um `impl
   From` manual guardando só a mensagem — perde-se a cadeia de causa.
@@ -143,7 +163,7 @@ renovação não deve virar 500 quando o caminho correto é pedir login.
 | --- | --- | --- |
 | `JWT_SECRET` vazado | **Crítico** — permite forjar qualquer sessão, inclusive admin | Segredo obrigatório validado no boot; nunca logado. **Sem rotação de chave implementada** |
 | `sessions` crescendo sem limite | Médio — degradação lenta | **Nenhuma.** Registrado como débito técnico |
-| Privilégio revogado ainda válido por até 10 min | Médio | TTL curto por padrão; revogação de sessão corta imediatamente |
+| Privilégio revogado ainda válido no JWT emitido | Médio | TTL nominal de 10 min mais 30 s de tolerância por padrão; revogar o refresh impede novas renovações, sem invalidar o JWT |
 | RUSTSEC-2023-0071 | Baixo neste uso | `ignore` documentado; **sem data de reavaliação** |
 | `COOKIE_SECURE=false` em produção | **Alto** — cookies em HTTP claro | Padrão inseguro para dev local; comparação literal com `"true"` é uma armadilha (ver DT-04) |
 
@@ -163,6 +183,11 @@ renovação não deve virar 500 quando o caminho correto é pedir login.
           revoked_session_cannot_rotate,
           expired_session_cannot_rotate,
           unknown_token_cannot_rotate,
+          protected_requests_rotate_missing_or_expired_access_tokens,
+          logout_never_renews_a_missing_or_expired_access_token,
+          login_and_registration_do_not_restore_the_previous_account,
+          authentication_pages_and_rejected_forms_do_not_rotate_refresh_tokens,
+          logout_revokes_refresh_but_access_lasts_until_its_expiry,
           an_expired_session_redirects_the_whole_browser_not_just_the_fragment
 ```
 

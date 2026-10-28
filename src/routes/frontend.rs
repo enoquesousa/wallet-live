@@ -505,8 +505,9 @@ async fn start_session(
         .add(refresh_cookie(&refresh, config)))
 }
 
-/// Logout com revogação REAL: além de remover os cookies do navegador, mata a
-/// sessão no servidor — o refresh token para de funcionar em qualquer cópia.
+/// Remove os cookies e tenta revogar o refresh no servidor, inclusive suas
+/// cópias. Um JWT de acesso já copiado continua válido até expirar; ele não
+/// consulta a tabela de sessões.
 #[instrument(skip_all)]
 async fn logout(repository: Repository, jar: CookieJar) -> (CookieJar, Redirect) {
     if let Some(refresh) = jar.get(REFRESH_COOKIE) {

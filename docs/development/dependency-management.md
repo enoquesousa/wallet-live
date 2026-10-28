@@ -21,13 +21,14 @@ e licenciamento do projeto (ver [../decisions/licensing.md](../decisions/licensi
 | Dependências diretas em `[dependencies]` | 26 |
 | Dependências diretas em `[dev-dependencies]` | 4 |
 | **Total de dependências diretas** | **30** |
-| **Pacotes na árvore completa** (`Cargo.lock`) | **392** |
+| **Pacotes registrados no `Cargo.lock`** | **390** |
 | Dependências JavaScript no build | **0** |
 | Dependências de CDN em runtime | **0** |
 
-> **As contagens correspondem ao `Cargo.toml` na data da última revisão deste documento
-> e devem ser atualizadas sempre que uma dependência direta for adicionada ou
-> removida.** Última revisão: 2026-07-31.
+> O inventário foi criado em 2026-07-31. As contagens, a entrada de `jwt-simple` e
+> a política de auditoria foram revisadas em 2026-10-24. Recontar após alterações
+> em `Cargo.toml` ou `Cargo.lock`; o lockfile também registra dependências opcionais
+> que não participam da árvore ativa.
 
 > **A ausência de cadeia npm é uma propriedade deliberada** — não um detalhe. O CSS é
 > compilado por um executável standalone e o htmx é vendorado, então o build não herda
@@ -52,7 +53,7 @@ e licenciamento do projeto (ver [../decisions/licensing.md](../decisions/licensi
 | `color-eyre` | 0.6.5 | Erro e backtrace no boot | Mensagem legível de falha de configuração | **Sim** — só usado no boot | Muito baixo |
 | `reqwest` | 0.12.24 | Cliente HTTP | Duas integrações externas | Não | Traz `native-tls`/OpenSSL |
 | `password-auth` | 1.0.0 | Hash argon2 | Negocia algoritmo; hash carrega os parâmetros | Não | Baixo |
-| `jwt-simple` | 0.12.12 | JWT HS256 | `pure-rust` dispensa cmake/BoringSSL | Substituível | **Traz `rsa` com advisory** |
+| `jwt-simple` | 0.13.2 | JWT HS256 | `pure-rust` dispensa cmake/BoringSSL | Substituível | **Traz `rsa` com advisory** |
 | `subtle` | 2.6.1 | Comparação em tempo constante | Segredo de admin e token CSRF | Não | Muito baixo |
 | `sha2` | 0.10.8 | SHA-256 | Hash do refresh token | Não | Muito baixo |
 | `rand` | 0.8.5 | Aleatoriedade do SO (`OsRng`) | Refresh token, CSRF, `request_id` | Não | Baixo |
@@ -94,12 +95,14 @@ Várias dependências usam `default-features = false` deliberadamente:
 ## 4. Auditoria de vulnerabilidades
 
 ```bash
-cargo audit
+cargo audit --ignore RUSTSEC-2026-0235
 ```
 
 Executado no CI (job `audit`) a cada push em `master` e a cada pull request.
+O comando lê `.cargo/audit.toml`: o `--ignore` da CI **se soma** à exceção RSA
+nesse arquivo. Portanto, a política efetiva contém os dois IDs abaixo.
 
-### Advisory ignorado
+### Exceção RSA
 
 **RUSTSEC-2023-0071 — "Marvin Attack" no crate `rsa`.**
 
@@ -112,7 +115,30 @@ Executado no CI (job `audit`) a cada push em `master` e a cada pull request.
 | Onde está registrado | `.cargo/audit.toml`, com a justificativa completa |
 
 > **Condição de reavaliação:** havendo correção upstream, ou se qualquer algoritmo RSA
-> passar a ser usado. **Não há data de revisão registrada** — registrado como débito.
+> passar a ser usado. **Não há periodicidade ou próxima data de reavaliação definida** — registrado como débito.
+
+### Exceção de dependência opcional
+
+**RUSTSEC-2026-0235 — `rkyv` 0.7.46.** O pacote permanece no lockfile como
+dependência opcional de `rust_decimal`, mas não participa da árvore ativa da
+aplicação. A exceção está no comando do job `audit` em `.github/workflows/ci.yml`.
+A verificação abaixo não lista dependentes na configuração atual, inclusive com
+as features da aplicação habilitadas:
+
+```bash
+cargo tree --locked --offline --all-features -i rkyv@0.7.46
+```
+
+Reavaliar a exceção se uma mudança de dependência ou feature ativar `rkyv`, ou se
+uma atualização permitir removê-lo do lockfile. `cargo audit` sem a flag continua
+lendo a exceção RSA do arquivo, mas também reporta o advisory de `rkyv`.
+
+### Atualização criptográfica de 2026-10-24
+
+`Cargo.toml` declara `jwt-simple` 0.13.2 com `pure-rust`; `Cargo.lock` resolve
+`crypto-bigint` 0.7.7 e `ctutils` 0.4.5. A árvore ainda contém
+`jwt-simple` → `superboring` 0.1.15 → `rsa` 0.9.10: essa atualização não elimina
+a exceção RSA. As duas exceções existentes permanecem delimitadas pelos IDs acima.
 
 ### Limites da auditoria
 
@@ -236,9 +262,9 @@ Consolidados em [../decisions/technical-debt.md](../decisions/technical-debt.md)
 
 ```text
 - Cargo.toml               (26 em [dependencies] + 4 em [dev-dependencies], com features)
-- Cargo.lock               (392 pacotes)
+- Cargo.lock               (390 pacotes; inclui dependências opcionais)
 - .cargo/audit.toml        (RUSTSEC-2023-0071, com justificativa)
-- .github/workflows/ci.yml (job audit; download do Tailwind v4.3.3)
+- .github/workflows/ci.yml (job audit com exceção RUSTSEC-2026-0235; Tailwind v4.3.3)
 - static/htmx.js           (2.0.8, vendorado)
 - Dockerfile               (rust:1.95-slim, debian:bookworm-slim)
 ```

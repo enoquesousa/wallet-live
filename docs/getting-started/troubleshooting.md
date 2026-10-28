@@ -245,7 +245,7 @@ Para confirmar que o htmx está carregando, verifique no console do navegador se
 | `SESSION_TTL_MINUTES` muito baixo | Aumentar — mas o refresh deveria renovar transparentemente |
 | `REFRESH_TTL_DAYS` expirado | Novo login |
 | **Duas abas renovando ao mesmo tempo** | Comportamento esperado: a rotação é atômica e uma das abas perde a reivindicação |
-| `JWT_SECRET` alterado | Trocar o segredo **invalida todas as sessões** |
+| `JWT_SECRET` alterado | JWTs antigos deixam de validar; refresh válido renova nas rotas permitidas. Sem refresh válido, é preciso entrar de novo |
 | Serviço reiniciado com segredo diferente | Idem |
 
 ### Cookies não marcados como `Secure` em produção

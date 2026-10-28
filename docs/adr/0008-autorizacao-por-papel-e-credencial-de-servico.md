@@ -63,9 +63,10 @@ foi cumprida.
 
 **Motivo confirmado**, com três elementos documentados no código.
 
-**Por que o papel de sessão é o caminho preferido** — o comentário em
-`src/auth/admin.rs` diz: "a autorização deriva da identidade, é revogável por
-sessão e auditável por usuário." As três propriedades faltam à secret key.
+**Por que o papel de sessão é o caminho preferido** — a autorização deriva da
+identidade e é atribuível ao usuário (`src/auth/admin.rs` · `Admin`). O refresh
+pode ser revogado individualmente, mas o papel no JWT já emitido permanece até
+expirar. A secret key não identifica um usuário nem tem revogação por consumidor.
 
 **Por que a secret key permanece:** integrações máquina-a-máquina não têm sessão de
 navegador. O caso confirmado de uso é a sincronização de cotações e scripts
@@ -98,7 +99,8 @@ banco recusa qualquer valor fora dos dois.
 ## Consequências positivas
 
 - Admin humano usa a interface normalmente, sem manejar segredo.
-- Escritas por sessão são atribuíveis a um usuário e revogáveis individualmente.
+- Escritas por sessão são atribuíveis a um usuário; a renovação de cada sessão
+  pode ser revogada individualmente.
 - Integração máquina-a-máquina continua possível.
 - Sem consulta extra ao banco: o `role` vem das claims assinadas.
 - Comparação de segredo sem canal lateral de tempo.
@@ -114,7 +116,8 @@ banco recusa qualquer valor fora dos dois.
   trocar a variável e reiniciar o serviço.
 - **Revogação de papel não é instantânea** — herda a limitação de
   [ADR-0007](0007-sessao-jwt-curto-com-refresh-rotativo.md): depende da expiração
-  do access token (≤ 10 min) ou da revogação da sessão.
+  do access token, incluindo 30 s de tolerância (até 10 min e 30 s com o TTL
+  padrão). Revogar o refresh não invalida os JWTs já emitidos.
 - **Não há promoção de admin pela interface.** `set_user_role` existe no
   `Repository`, mas nenhuma rota o expõe: promover um usuário exige `UPDATE` manual
   no banco. É seguro por omissão, e é atrito operacional real.

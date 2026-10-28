@@ -32,7 +32,7 @@ vulnerabilidade (ver [SECURITY.md](../../SECURITY.md)).
 | A6 | Saldo e posições | `users.balance`, `holdings` | Alto — dado financeiro do usuário |
 | A7 | Extrato | `transactions` | Alto — histórico financeiro completo |
 | A8 | Refresh tokens | Cookie (claro), banco (hash) | Alto — sessão persistente |
-| A9 | Access tokens | Cookie | Médio — janela de 10 min |
+| A9 | Access tokens | Cookie | Médio — TTL nominal de 10 min mais 30 s de tolerância |
 | A10 | Tokens CSRF | Cookie | Médio — habilita forja de requisição |
 | A11 | Disponibilidade do serviço | Processo | Médio |
 | A12 | Integridade do catálogo | `assets` | Alto |
@@ -80,9 +80,9 @@ Prob. = probabilidade.
 | A8 | Roubo de refresh token | XSS, acesso ao dispositivo | Alto | Baixa | `HttpOnly`, `SameSite=Strict`, CSP fechada, **rotação a cada uso** | **Baixo** | Vincular a impressão de dispositivo |
 | A8 | Replay de token queimado | Reuso após rotação | Médio | Baixa | `UPDATE ... RETURNING` atômico — **sem janela de corrida** | **Baixo** | — |
 | A8 | Vazamento pelo dump do banco | Leitura de `sessions` | Médio | Baixa | **Só a hash SHA-256 é gravada** | **Baixo** | — |
-| A9 | Access token não revogável | Roubo antes de expirar | Médio | Baixa | TTL de 10 min | **Médio** | Reduzir TTL; lista de revogação |
+| A9 | Access token não revogável | Roubo antes de expirar | Médio | Baixa | TTL nominal de 10 min e tolerância de 30 s | **Médio** | Reduzir TTL; lista de revogação |
 | A9 | Interceptação em HTTP claro | Rede hostil, `COOKIE_SECURE` mal configurado | **Alto** | **Média** | `Secure` condicional — **comparação literal com `"true"`** | **Alto** | Corrigir o parsing (DT-04); forçar HTTPS |
-| A6 | Privilégio revogado ainda ativo | `role` nas claims | Médio | Baixa | Expiração ≤ 10 min; revogação de sessão | **Baixo** | Consultar papel no banco |
+| A6 | Privilégio revogado ainda ativo | `role` nas claims | Médio | Baixa | Expiração do JWT mais 30 s de tolerância; revogar refresh só impede renovar | **Baixo** | Consultar papel no banco |
 
 > **A linha de `COOKIE_SECURE` é o risco mais concreto do modelo.** A falha é
 > silenciosa: um ambiente configurado com `COOKIE_SECURE=TRUE` (maiúsculas) roda
@@ -128,6 +128,7 @@ Prob. = probabilidade.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Todos | Crate com vulnerabilidade | Dependência | Alto | Média | `cargo audit` em push e PR; `Cargo.lock` versionado | **Baixo** | Execução agendada |
 | Todos | RUSTSEC-2023-0071 (`rsa`) | `jwt-simple` → `superboring` | Baixo **neste uso** | — | `ignore` documentado: só HS256 é usado, código RSA nunca exercitado | **Baixo** | Reavaliar quando houver fix |
+| Todos | RUSTSEC-2026-0235 (`rkyv` 0.7.46) | Dependência opcional de `rust_decimal` no lockfile | Não alcançável na árvore ativa verificada | — | Exceção específica na CI; `cargo tree --all-features` não lista dependentes | Condicionado às features atuais | Reavaliar se a dependência for ativada ou removida do lockfile |
 | Todos | **htmx vendorado vulnerável** | `static/htmx.js` | Médio | Baixa | **Nenhum** — `cargo audit` não alcança JavaScript | **Médio** | Verificação de versão do htmx |
 | Todos | Comprometimento de crate | Publicação maliciosa | Alto | Muito baixa | `Cargo.lock`; **zero dependências npm** | **Baixo** | — |
 | Todos | CLI do Tailwind adulterado | Download do GitHub Releases no CI | Médio | Muito baixa | **Sem verificação de checksum** | **Baixo** | Fixar hash do binário |
@@ -208,12 +209,17 @@ Decisões conscientes, com a justificativa registrada:
 | --- | --- | --- | --- |
 | RA-1 | Catálogo e preços públicos | Não é dado de usuário | A API se tornar comercial |
 | RA-2 | Sem criptografia em repouso | Simulação educacional, sem dinheiro real | Houver dado real de usuário |
-| RA-3 | Access token não revogável por 10 min | Custo de consultar o banco a cada requisição | Requisito de revogação imediata |
+| RA-3 | Access token não revogável até `exp + 30 s` | Custo de consultar o banco a cada requisição | Requisito de revogação imediata |
 | RA-4 | Lockout em memória | Instância única | Houver réplicas |
 | RA-5 | RUSTSEC-2023-0071 ignorado | Só HS256 é usado; código RSA nunca exercitado | Houver fix, ou uso de RSA |
 | RA-6 | Sem rate limiting global | Escopo educacional; mitigável no proxy | Exposição pública real |
 | RA-7 | `BIGSERIAL` em vez de UUID | Ids só em superfície autenticada, leitura filtrada | API pública ou multi-tenant |
 | RA-8 | Sem MFA | Escopo educacional | Operação real |
+| RA-9 | RUSTSEC-2026-0235 ignorado na CI | `rkyv` 0.7.46 é opcional e está ausente da árvore ativa, inclusive com `--all-features` | Uma feature ativar `rkyv`, ou uma atualização permitir retirá-lo do lockfile |
+
+A exceção de `rkyv` é adicional à exceção RSA de `.cargo/audit.toml`; a atualização
+para `jwt-simple` 0.13.2 mantém `rsa` 0.9.10. Ver a política e os comandos de
+verificação em [gestão de dependências](../development/dependency-management.md).
 
 ## 6. Ações prioritárias
 
@@ -244,6 +250,8 @@ classificados como Alto.**
 - src/repository.rs      (queries parametrizadas; filtro por user_id)
 - src/quotes.rs          · brl_price (recusa taxa ≤ 0; sem plausibilidade)
 - .cargo/audit.toml      (RUSTSEC-2023-0071)
+- .github/workflows/ci.yml · audit (RUSTSEC-2026-0235 adicional)
+- Cargo.toml, Cargo.lock (versões e features das dependências)
 - migrations/20260716000000_financial_guardrails.up.sql
 - migrations/20260716000001_create_sessions.up.sql
 ```

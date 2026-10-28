@@ -40,8 +40,9 @@ pub fn hash_token(value: &str) -> Vec<u8> {
     Sha256::digest(value.as_bytes()).to_vec()
 }
 
-/// Cookie do token de ACESSO (JWT curto). `Max-Age` alinhado à validade do
-/// token: navegador e assinatura expiram juntos.
+/// Cookie do token de ACESSO (JWT curto). `Max-Age` usa o TTL nominal do
+/// token; a validação da assinatura admite apenas a tolerância de relógio
+/// explícita em `User::from_auth_token`.
 pub fn access_cookie(user: &User, config: &Config) -> Result<Cookie<'static>, AppError> {
     Ok(Cookie::build((
         TOKEN_COOKIE,
@@ -77,12 +78,21 @@ pub fn session_expiry(config: &Config) -> time::OffsetDateTime {
 /// (revoga a linha antiga, cria uma nova) e emite os dois cookies renovados na
 /// resposta. O `User` renovado vai nas extensions da requisição, de onde o
 /// extrator o recupera — o handler nem fica sabendo que houve renovação.
+/// Login, cadastro e logout controlam seus próprios cookies e não renovam a
+/// sessão anterior.
 pub async fn refresh_session(
     State(state): State<AppState>,
     jar: CookieJar,
     mut request: Request,
     next: Next,
 ) -> Response {
+    // Estas rotas criam ou encerram sessões. Renovar antes delas consumiria o
+    // refresh que o logout precisa revogar; depois do handler, os Set-Cookie
+    // da renovação ainda poderiam sobrescrever a remoção ou a nova conta.
+    if matches!(request.uri().path(), "/login" | "/register" | "/logout") {
+        return next.run(request).await;
+    }
+
     // Acesso ainda válido? Nada a fazer.
     let has_valid_access = jar
         .get(TOKEN_COOKIE)

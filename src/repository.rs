@@ -252,8 +252,8 @@ impl Repository {
         Ok(Some(identity))
     }
 
-    /// Revoga uma sessão (logout real): o refresh token deixa de funcionar no
-    /// servidor, não importa quantas cópias existam por aí.
+    /// Revoga o refresh token no servidor, inclusive suas cópias. Os JWTs de
+    /// acesso já emitidos são stateless e continuam válidos até expirar.
     pub async fn revoke_session(&self, token_hash: &[u8]) -> sqlx::Result<()> {
         sqlx::query!(
             "UPDATE sessions SET revoked_at = NOW() WHERE token_hash = $1 AND revoked_at IS NULL",
